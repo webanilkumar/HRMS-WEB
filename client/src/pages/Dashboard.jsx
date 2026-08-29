@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -334,10 +334,7 @@ function Dashboard() {
             <span>Attendance</span>
           </button>
 
-          <button className="nav-item">
-            <CalendarDays size={19} />
-            <span>Leave</span>
-          </button>
+          <button className="nav-item" onClick={() => navigate("/leave")}><CalendarDays size={19} /><span>Leave</span></button>
 
           <button className="nav-item">
             <WalletCards size={19} />
@@ -602,7 +599,7 @@ function Dashboard() {
                       <strong>{request.name}</strong>
 
                       <span>
-                        {request.type} • {request.duration}
+                        {request.type} â€¢ {request.duration}
                       </span>
                     </div>
 
