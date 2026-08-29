@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -367,10 +367,7 @@ function Payroll() {
             <span>Payroll</span>
           </button>
 
-          <button className="nav-item">
-            <Settings size={19} />
-            <span>Settings</span>
-          </button>
+          <button className="nav-item" onClick={() => navigate("/settings")}><Settings size={19} /><span>Settings</span></button>
         </nav>
 
         <div className="sidebar-footer">

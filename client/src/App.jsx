@@ -6,6 +6,7 @@ import Employees from "./pages/Employees";
 import Attendance from "./pages/Attendance";
 import Leave from "./pages/Leave";
 import Payroll from "./pages/Payroll";
+import Settings from "./pages/Settings";
 
 import "./App.css";
 
@@ -42,6 +43,11 @@ function App() {
       <Route
         path="/payroll"
         element={<Payroll />}
+      />
+
+      <Route
+        path="/settings"
+        element={<Settings />}
       />
 
       <Route

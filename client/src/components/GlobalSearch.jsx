@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Clock3,
   Search,
+  Settings as SettingsIcon,
   UserRound,
   WalletCards,
 } from "lucide-react";
@@ -227,9 +228,21 @@ function GlobalSearch() {
         keywords:
           "payroll salary salaries payment payments paid pending basic allowance allowances deduction deductions net salary",
       },
+      {
+        key: "module-settings",
+        title: "Settings",
+        subtitle: "Company and HRMS Configuration",
+        type: "Settings",
+        path: "/settings",
+        keywords:
+          "settings setting company company profile configuration hrms configuration working hours office start time office end time grace period attendance rules leave settings payroll settings pf esi professional tax",
+      },
     ].filter((module) => {
       return (
         module.title
+          .toLowerCase()
+          .includes(value) ||
+        module.subtitle
           .toLowerCase()
           .includes(value) ||
         module.keywords.includes(value)
@@ -274,6 +287,10 @@ function GlobalSearch() {
 
     if (type === "Payroll") {
       return <WalletCards size={18} />;
+    }
+
+    if (type === "Settings") {
+      return <SettingsIcon size={18} />;
     }
 
     return <Clock3 size={18} />;
