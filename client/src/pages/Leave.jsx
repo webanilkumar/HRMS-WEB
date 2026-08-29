@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import GlobalSearch from "../components/GlobalSearch";
 import {
   Bell,
   CalendarDays,
@@ -338,10 +339,7 @@ function Leave() {
             <span>Leave</span>
           </button>
 
-          <button className="nav-item">
-            <WalletCards size={19} />
-            <span>Payroll</span>
-          </button>
+          <button className="nav-item" onClick={() => navigate("/payroll")}><WalletCards size={19} /><span>Payroll</span></button>
 
           <button className="nav-item">
             <Settings size={19} />
@@ -377,13 +375,7 @@ function Leave() {
           </div>
 
           <div className="header-actions">
-            <div className="search-box">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder="Search..."
-              />
-            </div>
+            <GlobalSearch />
 
             <button className="icon-button">
               <Bell size={20} />
@@ -728,3 +720,4 @@ function Leave() {
 }
 
 export default Leave;
+
