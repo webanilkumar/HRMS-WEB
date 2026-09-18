@@ -7,6 +7,10 @@ import Attendance from "./pages/Attendance";
 import Leave from "./pages/Leave";
 import Payroll from "./pages/Payroll";
 import Settings from "./pages/Settings";
+import DepartmentsDesignations from "./pages/DepartmentsDesignations";
+import Holidays from "./pages/Holidays";
+import Notices from "./pages/Notices";
+import EmployeeDocuments from "./pages/EmployeeDocuments";
 
 import "./App.css";
 
@@ -18,7 +22,10 @@ function App() {
         element={<Navigate to="/login" replace />}
       />
 
-      <Route path="/login" element={<Login />} />
+      <Route
+        path="/login"
+        element={<Login />}
+      />
 
       <Route
         path="/dashboard"
@@ -48,6 +55,26 @@ function App() {
       <Route
         path="/settings"
         element={<Settings />}
+      />
+
+      <Route
+        path="/departments-designations"
+        element={<DepartmentsDesignations />}
+      />
+
+      <Route
+        path="/holidays"
+        element={<Holidays />}
+      />
+
+      <Route
+        path="/notices"
+        element={<Notices />}
+      />
+
+      <Route
+        path="/employee-documents"
+        element={<EmployeeDocuments />}
       />
 
       <Route

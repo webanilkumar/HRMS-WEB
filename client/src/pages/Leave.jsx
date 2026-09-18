@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import GlobalSearch from "../components/GlobalSearch";
 import {
@@ -17,73 +17,17 @@ import {
   X,
 } from "lucide-react";
 
+const LEAVE_API_URL = "http://localhost:5000/api/leaves";
+const EMPLOYEE_API_URL = "http://localhost:5000/api/employees";
+
 function Leave() {
   const navigate = useNavigate();
 
-  const initialLeaveRequests = [
-    {
-      id: "LV001",
-      employee: "Rahul Singh",
-      type: "Casual Leave",
-      fromDate: "2026-08-29",
-      toDate: "2026-08-30",
-      reason: "Personal work",
-      status: "Pending",
-    },
-    {
-      id: "LV002",
-      employee: "Sneha Kapoor",
-      type: "Sick Leave",
-      fromDate: "2026-08-28",
-      toDate: "2026-08-28",
-      reason: "Not feeling well",
-      status: "Approved",
-    },
-    {
-      id: "LV003",
-      employee: "Vikram Joshi",
-      type: "Earned Leave",
-      fromDate: "2026-09-02",
-      toDate: "2026-09-04",
-      reason: "Family function",
-      status: "Rejected",
-    },
-  ];
-
-  const [leaveRequests, setLeaveRequests] = useState(() => {
-    const saved = localStorage.getItem("hrmsLeaves");
-
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return initialLeaveRequests;
-      }
-    }
-
-    return initialLeaveRequests;
-  });
-
-  // Employees module se employees load honge
-  const [employees] = useState(() => {
-    const savedEmployees = localStorage.getItem("hrmsEmployees");
-
-    if (savedEmployees) {
-      try {
-        return JSON.parse(savedEmployees);
-      } catch {
-        return [];
-      }
-    }
-
-    return [];
-  });
-
-  const activeEmployees = useMemo(() => {
-    return employees.filter(
-      (employee) => employee.status === "Active"
-    );
-  }, [employees]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -98,13 +42,91 @@ function Leave() {
     reason: "",
   });
 
-  const saveLeaveRequests = (updatedRequests) => {
-    setLeaveRequests(updatedRequests);
-    localStorage.setItem(
-      "hrmsLeaves",
-      JSON.stringify(updatedRequests)
-    );
+  const mapLeaveFromApi = (leave) => ({
+    _id: leave._id,
+    id: leave.leaveId,
+    employeeId: leave.employeeId,
+    employee: leave.employee,
+    type: leave.type,
+    fromDate: leave.fromDate,
+    toDate: leave.toDate,
+    reason: leave.reason,
+    status: leave.status,
+  });
+
+  const mapEmployeeFromApi = (employee) => ({
+    _id: employee._id,
+    id: employee.employeeId,
+    name: employee.name,
+    email: employee.email,
+    phone: employee.phone,
+    department: employee.department,
+    designation: employee.designation,
+    joiningDate: employee.joiningDate,
+    status: employee.status,
+  });
+
+  const syncLeaveCache = (requests) => {
+    localStorage.setItem("hrmsLeaves", JSON.stringify(requests));
   };
+
+  useEffect(() => {
+    const loadLeavePageData = async () => {
+      setLoading(true);
+      setApiError("");
+
+      try {
+        const [leaveResponse, employeeResponse] = await Promise.all([
+          fetch(LEAVE_API_URL),
+          fetch(EMPLOYEE_API_URL),
+        ]);
+
+        const leaveData = await leaveResponse.json();
+        const employeeData = await employeeResponse.json();
+
+        if (!leaveResponse.ok || !leaveData.success) {
+          throw new Error(
+            leaveData.message || "Unable to load leave requests."
+          );
+        }
+
+        if (!employeeResponse.ok || !employeeData.success) {
+          throw new Error(
+            employeeData.message || "Unable to load employees."
+          );
+        }
+
+        const mappedLeaves = (leaveData.leaves || []).map(
+          mapLeaveFromApi
+        );
+
+        const mappedEmployees = (employeeData.employees || []).map(
+          mapEmployeeFromApi
+        );
+
+        setLeaveRequests(mappedLeaves);
+        setEmployees(mappedEmployees);
+
+        // Temporary cache for Dashboard compatibility.
+        syncLeaveCache(mappedLeaves);
+      } catch (error) {
+        setApiError(
+          error.message ||
+            "Unable to connect to the backend. Please make sure the server is running."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadLeavePageData();
+  }, []);
+
+  const activeEmployees = useMemo(() => {
+    return employees.filter(
+      (employee) => employee.status === "Active"
+    );
+  }, [employees]);
 
   const filteredRequests = useMemo(() => {
     const searchValue = searchTerm.trim().toLowerCase();
@@ -162,6 +184,10 @@ function Leave() {
   };
 
   const closeModal = () => {
+    if (submitting) {
+      return;
+    }
+
     setShowModal(false);
     resetForm();
   };
@@ -173,25 +199,23 @@ function Leave() {
 
     const highestNumber = leaveRequests.reduce(
       (highest, request) => {
-        const number = Number(
-          request.id.replace("LV", "")
-        );
+        const number = Number(request.id.replace("LV", ""));
 
-        return number > highest ? number : highest;
+        return Number.isNaN(number)
+          ? highest
+          : Math.max(highest, number);
       },
       0
     );
 
-    return `LV${String(highestNumber + 1).padStart(
-      3,
-      "0"
-    )}`;
+    return `LV${String(highestNumber + 1).padStart(3, "0")}`;
   };
 
-  const handleSubmitLeave = (event) => {
+  const handleSubmitLeave = async (event) => {
     event.preventDefault();
 
     setFormError("");
+    setApiError("");
 
     if (
       !formData.employee ||
@@ -223,8 +247,8 @@ function Leave() {
       return;
     }
 
-    const newLeaveRequest = {
-      id: generateLeaveId(),
+    const payload = {
+      leaveId: generateLeaveId(),
       employeeId: selectedEmployee.id,
       employee: selectedEmployee.name,
       type: formData.type,
@@ -234,30 +258,89 @@ function Leave() {
       status: "Pending",
     };
 
-    const updatedRequests = [
-      newLeaveRequest,
-      ...leaveRequests,
-    ];
+    try {
+      setSubmitting(true);
 
-    saveLeaveRequests(updatedRequests);
-    closeModal();
+      const response = await fetch(LEAVE_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Failed to create leave request."
+        );
+      }
+
+      const createdLeave = mapLeaveFromApi(data.leave);
+      const updatedRequests = [
+        createdLeave,
+        ...leaveRequests,
+      ];
+
+      setLeaveRequests(updatedRequests);
+      syncLeaveCache(updatedRequests);
+
+      setShowModal(false);
+      resetForm();
+    } catch (error) {
+      setFormError(
+        error.message || "Failed to create leave request."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const updateLeaveStatus = (leaveId, status) => {
-    const updatedRequests = leaveRequests.map(
-      (request) => {
-        if (request.id !== leaveId) {
-          return request;
+  const updateLeaveStatus = async (mongoId, status) => {
+    if (!mongoId) {
+      setApiError("Leave request ID is missing.");
+      return;
+    }
+
+    setApiError("");
+
+    try {
+      const response = await fetch(
+        `${LEAVE_API_URL}/${mongoId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ status }),
         }
+      );
 
-        return {
-          ...request,
-          status,
-        };
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Failed to update leave status."
+        );
       }
-    );
 
-    saveLeaveRequests(updatedRequests);
+      const updatedLeave = mapLeaveFromApi(data.leave);
+
+      const updatedRequests = leaveRequests.map(
+        (request) =>
+          request._id === mongoId
+            ? updatedLeave
+            : request
+      );
+
+      setLeaveRequests(updatedRequests);
+      syncLeaveCache(updatedRequests);
+    } catch (error) {
+      setApiError(
+        error.message || "Failed to update leave status."
+      );
+    }
   };
 
   const formatDate = (dateValue) => {
@@ -411,6 +494,12 @@ function Leave() {
             </button>
           </div>
 
+          {apiError && (
+            <div className="employee-form-error">
+              {apiError}
+            </div>
+          )}
+
           <div className="leave-summary-grid">
             <div className="leave-summary-card">
               <span>Total Requests</span>
@@ -485,9 +574,17 @@ function Leave() {
                 </thead>
 
                 <tbody>
-                  {filteredRequests.length > 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td colSpan="8">
+                        <div className="employees-empty-state">
+                          Loading leave requests...
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredRequests.length > 0 ? (
                     filteredRequests.map((request) => (
-                      <tr key={request.id}>
+                      <tr key={request._id || request.id}>
                         <td>{request.id}</td>
                         <td>{request.employee}</td>
                         <td>{request.type}</td>
@@ -517,7 +614,7 @@ function Leave() {
                                 className="approve-button"
                                 onClick={() =>
                                   updateLeaveStatus(
-                                    request.id,
+                                    request._id,
                                     "Approved"
                                   )
                                 }
@@ -529,7 +626,7 @@ function Leave() {
                                 className="reject-button"
                                 onClick={() =>
                                   updateLeaveStatus(
-                                    request.id,
+                                    request._id,
                                     "Rejected"
                                   )
                                 }
@@ -697,6 +794,7 @@ function Leave() {
                   type="button"
                   className="employee-cancel-button"
                   onClick={closeModal}
+                  disabled={submitting}
                 >
                   Cancel
                 </button>
@@ -704,8 +802,9 @@ function Leave() {
                 <button
                   type="submit"
                   className="employee-save-button"
+                  disabled={submitting}
                 >
-                  Submit Leave
+                  {submitting ? "Submitting..." : "Submit Leave"}
                 </button>
               </div>
             </form>

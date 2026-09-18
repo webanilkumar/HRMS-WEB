@@ -17,6 +17,8 @@ import {
   WalletCards,
 } from "lucide-react";
 
+const SETTINGS_API_URL = "http://localhost:5000/api/settings";
+
 const defaultSettings = {
   companyName: "HRMS Solutions Pvt. Ltd.",
   companyEmail: "hr@company.com",
@@ -47,17 +49,74 @@ function Settings() {
 
   const [settings, setSettings] = useState(defaultSettings);
   const [savedMessage, setSavedMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const savedSettings = localStorage.getItem("hrmsSettings");
-
-    if (savedSettings) {
+    const loadSettings = async () => {
       try {
-        setSettings(JSON.parse(savedSettings));
-      } catch {
-        setSettings(defaultSettings);
+        setErrorMessage("");
+
+        const response = await fetch(SETTINGS_API_URL);
+        const result = await response.json();
+
+        if (!response.ok || !result.success || !result.data) {
+          throw new Error(result.message || "Failed to load settings.");
+        }
+
+        const data = result.data;
+
+        setSettings({
+          companyName: data.companyProfile?.companyName ?? "",
+          companyEmail: data.companyProfile?.companyEmail ?? "",
+          companyPhone: data.companyProfile?.companyPhone ?? "",
+          companyAddress: data.companyProfile?.companyAddress ?? "",
+
+          workingHoursPerDay: String(
+            data.workingHours?.workingHoursPerDay ?? 8
+          ),
+          officeStartTime: data.workingHours?.officeStartTime ?? "09:30",
+          officeEndTime: data.workingHours?.officeEndTime ?? "18:30",
+          gracePeriod: String(
+            data.workingHours?.gracePeriodMinutes ?? 15
+          ),
+
+          allowLatePunch:
+            data.attendanceRules?.allowLatePunch ?? true,
+          allowEarlyPunchOut:
+            data.attendanceRules?.allowEarlyPunchOut ?? true,
+          requireAttendanceRemark:
+            data.attendanceRules?.attendanceRemarkRequired ?? false,
+
+          casualLeave: String(
+            data.leaveSettings?.casualLeavePerYear ?? 12
+          ),
+          sickLeave: String(
+            data.leaveSettings?.sickLeavePerYear ?? 12
+          ),
+          earnedLeave: String(
+            data.leaveSettings?.earnedLeavePerYear ?? 15
+          ),
+
+          payrollDay: String(
+            data.payrollSettings?.payrollProcessingDay ?? 30
+          ),
+          pfEnabled:
+            data.payrollSettings?.providentFundEnabled ?? true,
+          esiEnabled:
+            data.payrollSettings?.esiEnabled ?? true,
+          professionalTaxEnabled:
+            data.payrollSettings?.professionalTaxEnabled ?? true,
+        });
+      } catch (error) {
+        console.error("Settings load error:", error);
+        setErrorMessage(
+          "Unable to load settings from backend. Make sure the backend server is running."
+        );
       }
-    }
+    };
+
+    loadSettings();
   }, []);
 
   const handleChange = (event) => {
@@ -69,23 +128,144 @@ function Settings() {
     }));
   };
 
-  const handleSave = () => {
-    localStorage.setItem("hrmsSettings", JSON.stringify(settings));
-    setSavedMessage("Settings saved successfully.");
-
-    setTimeout(() => {
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
       setSavedMessage("");
-    }, 2500);
+      setErrorMessage("");
+
+      const payload = {
+        companyProfile: {
+          companyName: settings.companyName.trim(),
+          companyEmail: settings.companyEmail.trim(),
+          companyPhone: settings.companyPhone.trim(),
+          companyAddress: settings.companyAddress.trim(),
+        },
+        workingHours: {
+          workingHoursPerDay: Number(settings.workingHoursPerDay),
+          gracePeriodMinutes: Number(settings.gracePeriod),
+          officeStartTime: settings.officeStartTime,
+          officeEndTime: settings.officeEndTime,
+        },
+        attendanceRules: {
+          allowLatePunch: settings.allowLatePunch,
+          allowEarlyPunchOut: settings.allowEarlyPunchOut,
+          attendanceRemarkRequired:
+            settings.requireAttendanceRemark,
+        },
+        leaveSettings: {
+          casualLeavePerYear: Number(settings.casualLeave),
+          sickLeavePerYear: Number(settings.sickLeave),
+          earnedLeavePerYear: Number(settings.earnedLeave),
+        },
+        payrollSettings: {
+          payrollProcessingDay: Number(settings.payrollDay),
+          providentFundEnabled: settings.pfEnabled,
+          esiEnabled: settings.esiEnabled,
+          professionalTaxEnabled:
+            settings.professionalTaxEnabled,
+        },
+      };
+
+      const response = await fetch(SETTINGS_API_URL, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to save settings.");
+      }
+
+      setSavedMessage("Settings saved successfully.");
+
+      setTimeout(() => {
+        setSavedMessage("");
+      }, 2500);
+    } catch (error) {
+      console.error("Settings save error:", error);
+      setErrorMessage(error.message || "Failed to save settings.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleReset = () => {
-    setSettings(defaultSettings);
-    localStorage.setItem("hrmsSettings", JSON.stringify(defaultSettings));
-    setSavedMessage("Settings reset to default.");
-
-    setTimeout(() => {
+  const handleReset = async () => {
+    try {
+      setIsSaving(true);
       setSavedMessage("");
-    }, 2500);
+      setErrorMessage("");
+
+      const response = await fetch(`${SETTINGS_API_URL}/reset`, {
+        method: "POST",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success || !result.data) {
+        throw new Error(result.message || "Failed to reset settings.");
+      }
+
+      const data = result.data;
+
+      setSettings({
+        companyName: data.companyProfile?.companyName ?? "",
+        companyEmail: data.companyProfile?.companyEmail ?? "",
+        companyPhone: data.companyProfile?.companyPhone ?? "",
+        companyAddress: data.companyProfile?.companyAddress ?? "",
+
+        workingHoursPerDay: String(
+          data.workingHours?.workingHoursPerDay ?? 8
+        ),
+        officeStartTime: data.workingHours?.officeStartTime ?? "09:30",
+        officeEndTime: data.workingHours?.officeEndTime ?? "18:30",
+        gracePeriod: String(
+          data.workingHours?.gracePeriodMinutes ?? 15
+        ),
+
+        allowLatePunch:
+          data.attendanceRules?.allowLatePunch ?? true,
+        allowEarlyPunchOut:
+          data.attendanceRules?.allowEarlyPunchOut ?? true,
+        requireAttendanceRemark:
+          data.attendanceRules?.attendanceRemarkRequired ?? false,
+
+        casualLeave: String(
+          data.leaveSettings?.casualLeavePerYear ?? 12
+        ),
+        sickLeave: String(
+          data.leaveSettings?.sickLeavePerYear ?? 12
+        ),
+        earnedLeave: String(
+          data.leaveSettings?.earnedLeavePerYear ?? 15
+        ),
+
+        payrollDay: String(
+          data.payrollSettings?.payrollProcessingDay ?? 30
+        ),
+        pfEnabled:
+          data.payrollSettings?.providentFundEnabled ?? true,
+        esiEnabled:
+          data.payrollSettings?.esiEnabled ?? true,
+        professionalTaxEnabled:
+          data.payrollSettings?.professionalTaxEnabled ?? true,
+      });
+
+      setSavedMessage("Settings reset to default.");
+
+      setTimeout(() => {
+        setSavedMessage("");
+      }, 2500);
+    } catch (error) {
+      console.error("Settings reset error:", error);
+      setErrorMessage(error.message || "Failed to reset settings.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleLogout = () => {
@@ -203,9 +383,27 @@ function Settings() {
 
         <section className="dashboard-content">
           <div className="settings-page">
-            {savedMessage && (
-              <div className="settings-success-message">
-                {savedMessage}
+            {(savedMessage || errorMessage) && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: "24px",
+                  right: "24px",
+                  zIndex: 9999,
+                  minWidth: "280px",
+                  maxWidth: "380px",
+                  padding: "14px 18px",
+                  borderRadius: "10px",
+                  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.18)",
+                  background: errorMessage ? "#fee2e2" : "#dcfce7",
+                  color: errorMessage ? "#991b1b" : "#166534",
+                  border: errorMessage
+                    ? "1px solid #fecaca"
+                    : "1px solid #bbf7d0",
+                  fontWeight: 600,
+                }}
+              >
+                {errorMessage || savedMessage}
               </div>
             )}
 
@@ -514,6 +712,7 @@ function Settings() {
               <button
                 className="settings-reset-button"
                 onClick={handleReset}
+                disabled={isSaving}
               >
                 <RotateCcw size={18} />
                 Reset
@@ -522,9 +721,10 @@ function Settings() {
               <button
                 className="settings-save-button"
                 onClick={handleSave}
+                disabled={isSaving}
               >
                 <Save size={18} />
-                Save Settings
+                {isSaving ? "Saving..." : "Save Settings"}
               </button>
             </div>
           </div>

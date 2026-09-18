@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import GlobalSearch from "../components/GlobalSearch";
 import {
@@ -15,63 +15,130 @@ import {
   WalletCards,
 } from "lucide-react";
 
+const ATTENDANCE_API_URL = "http://localhost:5000/api/attendance";
+const EMPLOYEE_API_URL = "http://localhost:5000/api/employees";
+
 function Attendance() {
   const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toLocaleDateString("en-CA")
+  );
 
-  const attendanceRecords = [
-    {
-      id: "EMP001",
-      name: "Aarav Sharma",
-      department: "Engineering",
-      punchIn: "09:12 AM",
-      punchOut: "06:20 PM",
-      workingHours: "09h 08m",
-      status: "Present",
-    },
-    {
-      id: "EMP002",
-      name: "Priya Mehta",
-      department: "Human Resources",
-      punchIn: "09:25 AM",
-      punchOut: "06:05 PM",
-      workingHours: "08h 40m",
-      status: "Present",
-    },
-    {
-      id: "EMP003",
-      name: "Rohan Verma",
-      department: "Finance",
-      punchIn: "--:--",
-      punchOut: "--:--",
-      workingHours: "00h 00m",
-      status: "Leave",
-    },
-    {
-      id: "EMP004",
-      name: "Neha Patel",
-      department: "Marketing",
-      punchIn: "10:02 AM",
-      punchOut: "--:--",
-      workingHours: "07h 22m",
-      status: "Punched In",
-    },
-    {
-      id: "EMP005",
-      name: "Vikram Joshi",
-      department: "Engineering",
-      punchIn: "--:--",
-      punchOut: "--:--",
-      workingHours: "00h 00m",
-      status: "Absent",
-    },
-  ];
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
+
+  const formatTime = (dateValue) => {
+    if (!dateValue) {
+      return "--:--";
+    }
+
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) {
+      return "--:--";
+    }
+
+    return date.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const formatWorkingHours = (minutes = 0) => {
+    const safeMinutes = Number(minutes) || 0;
+
+    const hours = Math.floor(safeMinutes / 60);
+    const remainingMinutes = safeMinutes % 60;
+
+    return `${String(hours).padStart(2, "0")}h ${String(
+      remainingMinutes
+    ).padStart(2, "0")}m`;
+  };
+
+  useEffect(() => {
+    const loadAttendanceData = async () => {
+      try {
+        setLoading(true);
+        setApiError("");
+
+        const [attendanceResponse, employeeResponse] = await Promise.all([
+          fetch(ATTENDANCE_API_URL),
+          fetch(EMPLOYEE_API_URL),
+        ]);
+
+        const attendanceData = await attendanceResponse.json();
+        const employeeData = await employeeResponse.json();
+
+        if (!attendanceResponse.ok || !attendanceData.success) {
+          throw new Error(
+            attendanceData.message || "Failed to load attendance records"
+          );
+        }
+
+        if (!employeeResponse.ok || !employeeData.success) {
+          throw new Error(
+            employeeData.message || "Failed to load employees"
+          );
+        }
+
+        setAttendanceRecords(attendanceData.attendances || []);
+        setEmployees(employeeData.employees || []);
+      } catch (error) {
+        console.error(error);
+
+        setApiError(
+          error.message ||
+            "Unable to load attendance data from backend."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAttendanceData();
+  }, []);
+
+  const employeeMap = useMemo(() => {
+    const map = {};
+
+    employees.forEach((employee) => {
+      map[employee.employeeId] = employee;
+    });
+
+    return map;
+  }, [employees]);
+
+  const selectedDateRecords = useMemo(() => {
+    return attendanceRecords
+      .filter((record) => record.attendanceDate === selectedDate)
+      .map((record) => {
+        const employeeDetails = employeeMap[record.employeeId];
+
+        return {
+          _id: record._id,
+          id: record.employeeId,
+          name: record.employee,
+          department:
+            employeeDetails?.department || "Not Assigned",
+          punchIn: formatTime(record.punchIn),
+          punchOut: formatTime(record.punchOut),
+          workingHours: formatWorkingHours(
+            record.totalWorkingMinutes
+          ),
+          status: record.status,
+        };
+      });
+  }, [attendanceRecords, selectedDate, employeeMap]);
 
   const filteredRecords = useMemo(() => {
-    return attendanceRecords.filter((record) => {
-      const searchValue = searchTerm.toLowerCase();
+    return selectedDateRecords.filter((record) => {
+      const searchValue = searchTerm.toLowerCase().trim();
 
       const matchesSearch =
         record.name.toLowerCase().includes(searchValue) ||
@@ -84,20 +151,25 @@ function Attendance() {
 
       return matchesSearch && matchesStatus;
     });
-  }, [searchTerm, statusFilter]);
+  }, [selectedDateRecords, searchTerm, statusFilter]);
 
-  const presentCount = attendanceRecords.filter(
+  const presentCount = selectedDateRecords.filter(
     (record) =>
       record.status === "Present" ||
-      record.status === "Punched In"
+      record.status === "Punched In" ||
+      record.status === "Punched Out"
   ).length;
 
-  const leaveCount = attendanceRecords.filter(
+  const leaveCount = selectedDateRecords.filter(
     (record) => record.status === "Leave"
   ).length;
 
-  const absentCount = attendanceRecords.filter(
+  const absentCount = selectedDateRecords.filter(
     (record) => record.status === "Absent"
+  ).length;
+
+  const activeEmployeeCount = employees.filter(
+    (employee) => employee.status === "Active"
   ).length;
 
   const handleLogout = () => {
@@ -108,7 +180,10 @@ function Attendance() {
   };
 
   const getStatusClass = (status) => {
-    if (status === "Present") {
+    if (
+      status === "Present" ||
+      status === "Punched Out"
+    ) {
       return "attendance-status-present";
     }
 
@@ -160,11 +235,29 @@ function Attendance() {
             <span>Attendance</span>
           </button>
 
-          <button className="nav-item" onClick={() => navigate("/leave")}><CalendarDays size={19} /><span>Leave</span></button>
+          <button
+            className="nav-item"
+            onClick={() => navigate("/leave")}
+          >
+            <CalendarDays size={19} />
+            <span>Leave</span>
+          </button>
 
-          <button className="nav-item" onClick={() => navigate("/payroll")}><WalletCards size={19} /><span>Payroll</span></button>
+          <button
+            className="nav-item"
+            onClick={() => navigate("/payroll")}
+          >
+            <WalletCards size={19} />
+            <span>Payroll</span>
+          </button>
 
-          <button className="nav-item" onClick={() => navigate("/settings")}><Settings size={19} /><span>Settings</span></button>
+          <button
+            className="nav-item"
+            onClick={() => navigate("/settings")}
+          >
+            <Settings size={19} />
+            <span>Settings</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -187,7 +280,9 @@ function Attendance() {
 
             <div>
               <h1>Attendance</h1>
-              <p>Track daily employee attendance and working hours.</p>
+              <p>
+                Track daily employee attendance and working hours.
+              </p>
             </div>
           </div>
 
@@ -216,22 +311,41 @@ function Attendance() {
           <div className="attendance-page-header">
             <div>
               <h1>Attendance Management</h1>
+
               <p>
-                Monitor employee punch in, punch out and daily status.
+                Monitor employee punch in, punch out and daily
+                status.
               </p>
             </div>
 
             <input
               className="attendance-date-input"
               type="date"
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              value={selectedDate}
+              onChange={(event) =>
+                setSelectedDate(event.target.value)
+              }
             />
           </div>
+
+          {apiError && (
+            <div
+              style={{
+                marginBottom: "16px",
+                padding: "12px 16px",
+                borderRadius: "8px",
+                background: "#fff1f2",
+                color: "#be123c",
+              }}
+            >
+              {apiError}
+            </div>
+          )}
 
           <div className="attendance-summary-grid">
             <div className="attendance-summary-card">
               <span>Total Employees</span>
-              <strong>{attendanceRecords.length}</strong>
+              <strong>{activeEmployeeCount}</strong>
             </div>
 
             <div className="attendance-summary-card">
@@ -273,7 +387,12 @@ function Attendance() {
               >
                 <option value="All">All Status</option>
                 <option value="Present">Present</option>
-                <option value="Punched In">Punched In</option>
+                <option value="Punched In">
+                  Punched In
+                </option>
+                <option value="Punched Out">
+                  Punched Out
+                </option>
                 <option value="Leave">Leave</option>
                 <option value="Absent">Absent</option>
               </select>
@@ -294,9 +413,17 @@ function Attendance() {
                 </thead>
 
                 <tbody>
-                  {filteredRecords.length > 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td colSpan="7">
+                        <div className="employees-empty-state">
+                          Loading attendance records...
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredRecords.length > 0 ? (
                     filteredRecords.map((record) => (
-                      <tr key={record.id}>
+                      <tr key={record._id || record.id}>
                         <td>
                           <div className="attendance-person-cell">
                             <div className="employees-avatar">
@@ -332,7 +459,8 @@ function Attendance() {
                     <tr>
                       <td colSpan="7">
                         <div className="employees-empty-state">
-                          No attendance records found.
+                          No attendance records found for this
+                          date.
                         </div>
                       </td>
                     </tr>
@@ -348,5 +476,3 @@ function Attendance() {
 }
 
 export default Attendance;
-
-

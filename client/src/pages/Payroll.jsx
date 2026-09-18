@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -17,36 +17,14 @@ import {
 
 import GlobalSearch from "../components/GlobalSearch";
 
+const PAYROLL_API_URL = "http://localhost:5000/api/payrolls";
+const EMPLOYEE_API_URL = "http://localhost:5000/api/employees";
+
 function Payroll() {
   const navigate = useNavigate();
 
-  const [employees] = useState(() => {
-    const savedEmployees = localStorage.getItem("hrmsEmployees");
-
-    if (savedEmployees) {
-      try {
-        return JSON.parse(savedEmployees);
-      } catch {
-        return [];
-      }
-    }
-
-    return [];
-  });
-
-  const [payrollRecords, setPayrollRecords] = useState(() => {
-    const savedPayroll = localStorage.getItem("hrmsPayroll");
-
-    if (savedPayroll) {
-      try {
-        return JSON.parse(savedPayroll);
-      } catch {
-        return [];
-      }
-    }
-
-    return [];
-  });
+  const [employees, setEmployees] = useState([]);
+  const [payrollRecords, setPayrollRecords] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [monthFilter, setMonthFilter] = useState("All");
@@ -54,6 +32,9 @@ function Payroll() {
 
   const [showModal, setShowModal] = useState(false);
   const [formError, setFormError] = useState("");
+  const [apiError, setApiError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     employeeId: "",
@@ -64,6 +45,82 @@ function Payroll() {
     status: "Pending",
   });
 
+  useEffect(() => {
+    const loadPayrollData = async () => {
+      setLoading(true);
+      setApiError("");
+
+      try {
+        const [payrollResponse, employeeResponse] = await Promise.all([
+          fetch(PAYROLL_API_URL),
+          fetch(EMPLOYEE_API_URL),
+        ]);
+
+        const payrollData = await payrollResponse.json();
+        const employeeData = await employeeResponse.json();
+
+        if (!payrollResponse.ok || !payrollData.success) {
+          throw new Error(
+            payrollData.message || "Unable to load payroll records."
+          );
+        }
+
+        if (!employeeResponse.ok || !employeeData.success) {
+          throw new Error(
+            employeeData.message || "Unable to load employees."
+          );
+        }
+
+        const mappedPayroll = (payrollData.payrolls || []).map((record) => ({
+          _id: record._id,
+          id: record.payrollId,
+          employeeId: record.employeeId,
+          employee: record.employee,
+          department: record.department,
+          designation: record.designation,
+          month: record.month,
+          basicSalary: record.basicSalary,
+          allowances: record.allowances,
+          deductions: record.deductions,
+          netSalary: record.netSalary,
+          status: record.status,
+        }));
+
+        const mappedEmployees = (employeeData.employees || []).map(
+          (employee) => ({
+            _id: employee._id,
+            id: employee.employeeId,
+            name: employee.name,
+            email: employee.email,
+            phone: employee.phone,
+            department: employee.department,
+            designation: employee.designation,
+            joiningDate: employee.joiningDate,
+            status: employee.status,
+          })
+        );
+
+        setPayrollRecords(mappedPayroll);
+        setEmployees(mappedEmployees);
+
+        // Temporary mirror for Dashboard compatibility.
+        localStorage.setItem(
+          "hrmsPayroll",
+          JSON.stringify(mappedPayroll)
+        );
+      } catch (error) {
+        setApiError(
+          error.message ||
+            "Unable to load payroll data from backend."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPayrollData();
+  }, []);
+
   const activeEmployees = useMemo(() => {
     return employees.filter(
       (employee) => employee.status === "Active"
@@ -73,6 +130,7 @@ function Payroll() {
   const savePayrollRecords = (records) => {
     setPayrollRecords(records);
 
+    // Temporary mirror for Dashboard compatibility.
     localStorage.setItem(
       "hrmsPayroll",
       JSON.stringify(records)
@@ -80,7 +138,20 @@ function Payroll() {
   };
 
   const generatePayrollId = () => {
-    const nextNumber = payrollRecords.length + 1;
+    const highestNumber = payrollRecords.reduce(
+      (highest, record) => {
+        const number = Number(
+          String(record.id || "").replace("PAY", "")
+        );
+
+        return Number.isNaN(number)
+          ? highest
+          : Math.max(highest, number);
+      },
+      0
+    );
+
+    const nextNumber = highestNumber + 1;
 
     return `PAY${String(nextNumber).padStart(3, "0")}`;
   };
@@ -121,7 +192,7 @@ function Payroll() {
     setFormError("");
   };
 
-  const handleGeneratePayroll = (event) => {
+  const handleGeneratePayroll = async (event) => {
     event.preventDefault();
 
     if (
@@ -173,8 +244,8 @@ function Payroll() {
       return;
     }
 
-    const newPayroll = {
-      id: generatePayrollId(),
+    const payrollPayload = {
+      payrollId: generatePayrollId(),
       employeeId: selectedEmployee.id,
       employee: selectedEmployee.name,
       department: selectedEmployee.department,
@@ -187,29 +258,110 @@ function Payroll() {
       status: formData.status,
     };
 
-    const updatedRecords = [
-      newPayroll,
-      ...payrollRecords,
-    ];
+    setSubmitting(true);
+    setFormError("");
 
-    savePayrollRecords(updatedRecords);
+    try {
+      const response = await fetch(PAYROLL_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payrollPayload),
+      });
 
-    resetForm();
-    setShowModal(false);
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Unable to generate payroll."
+        );
+      }
+
+      const createdPayroll = {
+        _id: data.payroll._id,
+        id: data.payroll.payrollId,
+        employeeId: data.payroll.employeeId,
+        employee: data.payroll.employee,
+        department: data.payroll.department,
+        designation: data.payroll.designation,
+        month: data.payroll.month,
+        basicSalary: data.payroll.basicSalary,
+        allowances: data.payroll.allowances,
+        deductions: data.payroll.deductions,
+        netSalary: data.payroll.netSalary,
+        status: data.payroll.status,
+      };
+
+      savePayrollRecords([
+        createdPayroll,
+        ...payrollRecords,
+      ]);
+
+      resetForm();
+      setShowModal(false);
+    } catch (error) {
+      setFormError(
+        error.message || "Unable to generate payroll."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleStatusChange = (id, newStatus) => {
-    const updatedRecords = payrollRecords.map(
-      (record) =>
-        record.id === id
-          ? {
-              ...record,
-              status: newStatus,
-            }
-          : record
-    );
+  const handleStatusChange = async (
+    mongoId,
+    newStatus
+  ) => {
+    if (!mongoId) {
+      setApiError(
+        "Unable to update payroll status. Record ID is missing."
+      );
+      return;
+    }
 
-    savePayrollRecords(updatedRecords);
+    setApiError("");
+
+    try {
+      const response = await fetch(
+        `${PAYROLL_API_URL}/${mongoId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            status: newStatus,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message ||
+            "Unable to update payroll status."
+        );
+      }
+
+      const updatedRecords = payrollRecords.map(
+        (record) =>
+          record._id === mongoId
+            ? {
+                ...record,
+                status: data.payroll.status,
+              }
+            : record
+      );
+
+      savePayrollRecords(updatedRecords);
+    } catch (error) {
+      setApiError(
+        error.message ||
+          "Unable to update payroll status."
+      );
+    }
   };
 
   const filteredPayrollRecords = useMemo(() => {
@@ -483,6 +635,12 @@ function Payroll() {
             </div>
           </div>
 
+          {apiError && (
+            <div className="form-error">
+              {apiError}
+            </div>
+          )}
+
           <section className="panel">
             <div className="panel-header">
               <div>
@@ -569,10 +727,19 @@ function Payroll() {
                 </thead>
 
                 <tbody>
-                  {filteredPayrollRecords.length > 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan="9"
+                        className="empty-table-message"
+                      >
+                        Loading payroll records...
+                      </td>
+                    </tr>
+                  ) : filteredPayrollRecords.length > 0 ? (
                     filteredPayrollRecords.map(
                       (record) => (
-                        <tr key={record.id}>
+                        <tr key={record._id || record.id}>
                           <td>{record.id}</td>
 
                           <td>
@@ -652,7 +819,7 @@ function Payroll() {
                               value={record.status}
                               onChange={(event) =>
                                 handleStatusChange(
-                                  record.id,
+                                  record._id,
                                   event.target.value
                                 )
                               }
@@ -860,7 +1027,12 @@ function Payroll() {
 
                 <button
                   type="submit"
-                  className="payroll-submit-button">Generate Payroll
+                  className="payroll-submit-button"
+                  disabled={submitting}
+                >
+                  {submitting
+                    ? "Generating..."
+                    : "Generate Payroll"}
                 </button>
               </div>
             </form>
@@ -872,5 +1044,3 @@ function Payroll() {
 }
 
 export default Payroll;
-
-

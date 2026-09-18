@@ -8,8 +8,9 @@ function Login() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (event) => {
+  const handleLogin = async (event) => {
     event.preventDefault();
 
     setError("");
@@ -19,27 +20,76 @@ function Login() {
       return;
     }
 
-    const demoEmail = "admin@hrms.com";
-    const demoPassword = "Admin@123";
+    try {
+      setLoading(true);
 
-    if (email === demoEmail && password === demoPassword) {
+      const response = await fetch(
+        "http://localhost:5000/api/auth/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(result.message || "Login failed.");
+        return;
+      }
+
       const loginData = {
-        email,
-        role: "Admin",
-        name: "HRMS Admin",
+        id: result.data.id,
+        name: result.data.name,
+        email: result.data.email,
+        role: result.data.role,
+        employeeId: result.data.employeeId,
+        isActive: result.data.isActive,
+        token: result.token,
       };
 
       if (rememberMe) {
-        localStorage.setItem("hrmsUser", JSON.stringify(loginData));
+        localStorage.setItem(
+          "hrmsUser",
+          JSON.stringify(loginData)
+        );
+
+        localStorage.setItem(
+          "hrmsToken",
+          result.token
+        );
+
+        sessionStorage.removeItem("hrmsUser");
+        sessionStorage.removeItem("hrmsToken");
       } else {
-        sessionStorage.setItem("hrmsUser", JSON.stringify(loginData));
+        sessionStorage.setItem(
+          "hrmsUser",
+          JSON.stringify(loginData)
+        );
+
+        sessionStorage.setItem(
+          "hrmsToken",
+          result.token
+        );
+
+        localStorage.removeItem("hrmsUser");
+        localStorage.removeItem("hrmsToken");
       }
 
       navigate("/dashboard");
-      return;
+    } catch (error) {
+      setError(
+        "Unable to connect to server. Please make sure backend is running."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    setError("Invalid email or password.");
   };
 
   return (
@@ -63,56 +113,86 @@ function Login() {
             Enter your credentials to access the HRMS dashboard.
           </p>
 
-          <form className="login-form" onSubmit={handleLogin}>
+          <form
+            className="login-form"
+            onSubmit={handleLogin}
+          >
             <div className="form-group">
-              <label htmlFor="email">Email Address</label>
+              <label htmlFor="email">
+                Email Address
+              </label>
 
               <input
                 id="email"
                 type="email"
                 placeholder="Enter your email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) =>
+                  setEmail(event.target.value)
+                }
+                disabled={loading}
               />
             </div>
 
             <div className="form-group">
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password">
+                Password
+              </label>
 
               <input
                 id="password"
                 type="password"
                 placeholder="Enter your password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) =>
+                  setPassword(event.target.value)
+                }
+                disabled={loading}
               />
             </div>
 
-            {error && <p className="login-error">{error}</p>}
+            {error && (
+              <p className="login-error">
+                {error}
+              </p>
+            )}
 
             <div className="form-options">
               <label className="remember-me">
                 <input
                   type="checkbox"
                   checked={rememberMe}
-                  onChange={(event) => setRememberMe(event.target.checked)}
+                  onChange={(event) =>
+                    setRememberMe(
+                      event.target.checked
+                    )
+                  }
+                  disabled={loading}
                 />
 
                 <span>Remember me</span>
               </label>
 
-              <button type="button" className="forgot-btn">
+              <button
+                type="button"
+                className="forgot-btn"
+                disabled={loading}
+              >
                 Forgot password?
               </button>
             </div>
 
-            <button type="submit" className="login-btn">
-              Login
+            <button
+              type="submit"
+              className="login-btn"
+              disabled={loading}
+            >
+              {loading ? "Logging in..." : "Login"}
             </button>
           </form>
 
           <div className="demo-login-box">
-            <p>Demo Admin Login</p>
+            <p>Admin Login</p>
             <span>Email: admin@hrms.com</span>
             <span>Password: Admin@123</span>
           </div>
@@ -121,34 +201,47 @@ function Login() {
 
       <div className="login-right">
         <div className="visual-card">
-          <div className="visual-icon">HR</div>
+          <div className="visual-icon">
+            HR
+          </div>
 
-          <h2>Manage your workforce smarter</h2>
+          <h2>
+            Manage your workforce smarter
+          </h2>
 
           <p>
-            Employees, attendance, punch in/out, leave, payroll and reports in
-            one place.
+            Employees, attendance, punch
+            in/out, leave, payroll and reports
+            in one place.
           </p>
 
           <div className="feature-grid">
             <div className="feature-card">
               <strong>Employees</strong>
-              <span>Manage employee records</span>
+              <span>
+                Manage employee records
+              </span>
             </div>
 
             <div className="feature-card">
               <strong>Attendance</strong>
-              <span>Track daily attendance</span>
+              <span>
+                Track daily attendance
+              </span>
             </div>
 
             <div className="feature-card">
               <strong>Leave</strong>
-              <span>Approve and manage leave</span>
+              <span>
+                Approve and manage leave
+              </span>
             </div>
 
             <div className="feature-card">
               <strong>Payroll</strong>
-              <span>Maintain salary records</span>
+              <span>
+                Maintain salary records
+              </span>
             </div>
           </div>
         </div>

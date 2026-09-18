@@ -21,63 +21,14 @@ import {
   X,
 } from "lucide-react";
 
+const API_URL = "http://localhost:5000/api/employees";
+
 function Employees() {
   const navigate = useNavigate();
 
-  const defaultEmployees = [
-    {
-      id: "EMP001",
-      name: "Aarav Sharma",
-      email: "aarav.sharma@hrms.com",
-      phone: "9876543210",
-      department: "Engineering",
-      designation: "Frontend Developer",
-      joiningDate: "2025-01-12",
-      status: "Active",
-    },
-    {
-      id: "EMP002",
-      name: "Priya Mehta",
-      email: "priya.mehta@hrms.com",
-      phone: "9876543211",
-      department: "Human Resources",
-      designation: "HR Executive",
-      joiningDate: "2025-03-04",
-      status: "Active",
-    },
-    {
-      id: "EMP003",
-      name: "Rohan Verma",
-      email: "rohan.verma@hrms.com",
-      phone: "9876543212",
-      department: "Finance",
-      designation: "Accountant",
-      joiningDate: "2024-11-18",
-      status: "Active",
-    },
-    {
-      id: "EMP004",
-      name: "Neha Patel",
-      email: "neha.patel@hrms.com",
-      phone: "9876543213",
-      department: "Marketing",
-      designation: "Marketing Executive",
-      joiningDate: "2025-06-25",
-      status: "Active",
-    },
-    {
-      id: "EMP005",
-      name: "Vikram Joshi",
-      email: "vikram.joshi@hrms.com",
-      phone: "9876543214",
-      department: "Engineering",
-      designation: "Backend Developer",
-      joiningDate: "2024-09-09",
-      status: "Inactive",
-    },
-  ];
-
   const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("All");
@@ -91,6 +42,7 @@ function Employees() {
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
 
   const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -98,42 +50,59 @@ function Employees() {
     phone: "",
     department: "",
     designation: "",
+    dateOfBirth: "",
+    profilePhoto: "",
     joiningDate: "",
     status: "Active",
   });
 
-  useEffect(() => {
-    const savedEmployees = localStorage.getItem("hrmsEmployees");
+  const mapEmployee = (employee) => ({
+    ...employee,
+    id: employee.employeeId,
+  });
 
-    if (savedEmployees) {
-      try {
-        setEmployees(JSON.parse(savedEmployees));
-      } catch {
-        setEmployees(defaultEmployees);
-
-        localStorage.setItem(
-          "hrmsEmployees",
-          JSON.stringify(defaultEmployees)
-        );
-      }
-    } else {
-      setEmployees(defaultEmployees);
-
-      localStorage.setItem(
-        "hrmsEmployees",
-        JSON.stringify(defaultEmployees)
-      );
-    }
-  }, []);
-
-  const saveEmployees = (updatedEmployees) => {
-    setEmployees(updatedEmployees);
-
+  const syncLocalEmployees = (employeeList) => {
     localStorage.setItem(
       "hrmsEmployees",
-      JSON.stringify(updatedEmployees)
+      JSON.stringify(employeeList)
     );
   };
+
+  const fetchEmployees = async () => {
+    try {
+      setLoading(true);
+      setApiError("");
+
+      const response = await fetch(API_URL);
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Failed to load employees."
+        );
+      }
+
+      const employeeList = (data.employees || []).map(mapEmployee);
+
+      setEmployees(employeeList);
+
+      // Temporary compatibility for Leave/Dashboard
+      // until those modules are also moved to backend APIs.
+      syncLocalEmployees(employeeList);
+    } catch (error) {
+      console.error("Employee fetch error:", error);
+
+      setApiError(
+        "Unable to load employees from backend. Make sure the backend server is running."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
 
   const formatDate = (dateValue) => {
     if (!dateValue) {
@@ -145,6 +114,14 @@ function Employees() {
       month: "short",
       year: "numeric",
     });
+  };
+
+  const formatDateForInput = (dateValue) => {
+    if (!dateValue) {
+      return "";
+    }
+
+    return new Date(dateValue).toISOString().split("T")[0];
   };
 
   const filteredEmployees = useMemo(() => {
@@ -193,6 +170,8 @@ function Employees() {
       phone: "",
       department: "",
       designation: "",
+      dateOfBirth: "",
+      profilePhoto: "",
       joiningDate: "",
       status: "Active",
     });
@@ -200,7 +179,7 @@ function Employees() {
     setFormError("");
   };
 
-  const validateEmployeeForm = (employeeId = null) => {
+  const validateEmployeeForm = (mongoId = null) => {
     if (
       !formData.name.trim() ||
       !formData.email.trim() ||
@@ -224,7 +203,7 @@ function Employees() {
       (employee) =>
         employee.email.toLowerCase() ===
           formData.email.trim().toLowerCase() &&
-        employee.id !== employeeId
+        employee._id !== mongoId
     );
 
     if (emailExists) {
@@ -243,6 +222,10 @@ function Employees() {
   };
 
   const closeAddModal = () => {
+    if (submitting) {
+      return;
+    }
+
     setShowAddModal(false);
     resetForm();
   };
@@ -258,15 +241,17 @@ function Employees() {
   };
 
   const openEditModal = (employee) => {
-    setEditingEmployeeId(employee.id);
+    setEditingEmployeeId(employee._id);
 
     setFormData({
       name: employee.name,
       email: employee.email,
-      phone: employee.phone,
+      phone: employee.phone || "",
       department: employee.department,
       designation: employee.designation,
-      joiningDate: employee.joiningDate,
+      dateOfBirth: formatDateForInput(employee.dateOfBirth),
+      profilePhoto: employee.profilePhoto || "",
+      joiningDate: formatDateForInput(employee.joiningDate),
       status: employee.status,
     });
 
@@ -275,6 +260,10 @@ function Employees() {
   };
 
   const closeEditModal = () => {
+    if (submitting) {
+      return;
+    }
+
     setShowEditModal(false);
     setEditingEmployeeId(null);
     resetForm();
@@ -287,17 +276,22 @@ function Employees() {
 
     const highestNumber = employees.reduce(
       (highest, employee) => {
-        const number = Number(employee.id.replace("EMP", ""));
+        const number = Number(
+          employee.id.replace("EMP", "")
+        );
 
         return number > highest ? number : highest;
       },
       0
     );
 
-    return `EMP${String(highestNumber + 1).padStart(3, "0")}`;
+    return `EMP${String(highestNumber + 1).padStart(
+      3,
+      "0"
+    )}`;
   };
 
-  const handleAddEmployee = (event) => {
+  const handleAddEmployee = async (event) => {
     event.preventDefault();
 
     setFormError("");
@@ -306,24 +300,62 @@ function Employees() {
       return;
     }
 
-    const newEmployee = {
-      id: generateEmployeeId(),
-      name: formData.name.trim(),
-      email: formData.email.trim(),
-      phone: formData.phone.trim(),
-      department: formData.department,
-      designation: formData.designation.trim(),
-      joiningDate: formData.joiningDate,
-      status: formData.status,
-    };
+    try {
+      setSubmitting(true);
 
-    const updatedEmployees = [newEmployee, ...employees];
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          employeeId: generateEmployeeId(),
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          department: formData.department,
+          designation: formData.designation.trim(),
+          dateOfBirth: formData.dateOfBirth || null,
+          profilePhoto: formData.profilePhoto.trim(),
+          joiningDate: formData.joiningDate,
+          status: formData.status,
+        }),
+      });
 
-    saveEmployees(updatedEmployees);
-    closeAddModal();
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+            data.message ||
+            "Failed to create employee."
+        );
+      }
+
+      const newEmployee = mapEmployee(data.employee);
+
+      const updatedEmployees = [
+        newEmployee,
+        ...employees,
+      ];
+
+      setEmployees(updatedEmployees);
+      syncLocalEmployees(updatedEmployees);
+
+      setShowAddModal(false);
+      resetForm();
+    } catch (error) {
+      console.error("Add employee error:", error);
+
+      setFormError(
+        error.message || "Failed to create employee."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleUpdateEmployee = (event) => {
+  const handleUpdateEmployee = async (event) => {
     event.preventDefault();
 
     setFormError("");
@@ -332,28 +364,67 @@ function Employees() {
       return;
     }
 
-    const updatedEmployees = employees.map((employee) => {
-      if (employee.id !== editingEmployeeId) {
-        return employee;
+    try {
+      setSubmitting(true);
+
+      const response = await fetch(
+        `${API_URL}/${editingEmployeeId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            email: formData.email.trim(),
+            phone: formData.phone.trim(),
+            department: formData.department,
+            designation: formData.designation.trim(),
+            dateOfBirth: formData.dateOfBirth || null,
+            profilePhoto: formData.profilePhoto.trim(),
+            joiningDate: formData.joiningDate,
+            status: formData.status,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+            data.message ||
+            "Failed to update employee."
+        );
       }
 
-      return {
-        ...employee,
-        name: formData.name.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        department: formData.department,
-        designation: formData.designation.trim(),
-        joiningDate: formData.joiningDate,
-        status: formData.status,
-      };
-    });
+      const updatedEmployee = mapEmployee(data.employee);
 
-    saveEmployees(updatedEmployees);
-    closeEditModal();
+      const updatedEmployees = employees.map(
+        (employee) =>
+          employee._id === editingEmployeeId
+            ? updatedEmployee
+            : employee
+      );
+
+      setEmployees(updatedEmployees);
+      syncLocalEmployees(updatedEmployees);
+
+      setShowEditModal(false);
+      setEditingEmployeeId(null);
+      resetForm();
+    } catch (error) {
+      console.error("Update employee error:", error);
+
+      setFormError(
+        error.message || "Failed to update employee."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDeleteEmployee = (employeeId) => {
+  const handleDeleteEmployee = async (mongoId) => {
     const confirmDelete = window.confirm(
       "Are you sure you want to delete this employee?"
     );
@@ -362,11 +433,34 @@ function Employees() {
       return;
     }
 
-    const updatedEmployees = employees.filter(
-      (employee) => employee.id !== employeeId
-    );
+    try {
+      setApiError("");
 
-    saveEmployees(updatedEmployees);
+      const response = await fetch(`${API_URL}/${mongoId}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || "Failed to delete employee."
+        );
+      }
+
+      const updatedEmployees = employees.filter(
+        (employee) => employee._id !== mongoId
+      );
+
+      setEmployees(updatedEmployees);
+      syncLocalEmployees(updatedEmployees);
+    } catch (error) {
+      console.error("Delete employee error:", error);
+
+      setApiError(
+        error.message || "Failed to delete employee."
+      );
+    }
   };
 
   const handleLogout = () => {
@@ -429,7 +523,9 @@ function Employees() {
         >
           <option value="">Select Department</option>
           <option value="Engineering">Engineering</option>
-          <option value="Human Resources">Human Resources</option>
+          <option value="Human Resources">
+            Human Resources
+          </option>
           <option value="Finance">Finance</option>
           <option value="Marketing">Marketing</option>
           <option value="Operations">Operations</option>
@@ -437,7 +533,9 @@ function Employees() {
       </div>
 
       <div className="employee-form-group">
-        <label htmlFor="designation">Designation *</label>
+        <label htmlFor="designation">
+          Designation *
+        </label>
 
         <input
           id="designation"
@@ -450,7 +548,38 @@ function Employees() {
       </div>
 
       <div className="employee-form-group">
-        <label htmlFor="joiningDate">Joining Date *</label>
+        <label htmlFor="profilePhoto">
+          Profile Photo URL
+        </label>
+
+        <input
+          id="profilePhoto"
+          name="profilePhoto"
+          type="url"
+          placeholder="https://example.com/photo.jpg"
+          value={formData.profilePhoto}
+          onChange={handleInputChange}
+        />
+      </div>
+
+      <div className="employee-form-group">
+        <label htmlFor="dateOfBirth">
+          Date of Birth
+        </label>
+
+        <input
+          id="dateOfBirth"
+          name="dateOfBirth"
+          type="date"
+          value={formData.dateOfBirth}
+          onChange={handleInputChange}
+        />
+      </div>
+
+      <div className="employee-form-group">
+        <label htmlFor="joiningDate">
+          Joining Date *
+        </label>
 
         <input
           id="joiningDate"
@@ -514,11 +643,29 @@ function Employees() {
             <span>Attendance</span>
           </button>
 
-          <button className="nav-item" onClick={() => navigate("/leave")}><CalendarDays size={19} /><span>Leave</span></button>
+          <button
+            className="nav-item"
+            onClick={() => navigate("/leave")}
+          >
+            <CalendarDays size={19} />
+            <span>Leave</span>
+          </button>
 
-          <button className="nav-item" onClick={() => navigate("/payroll")}><WalletCards size={19} /><span>Payroll</span></button>
+          <button
+            className="nav-item"
+            onClick={() => navigate("/payroll")}
+          >
+            <WalletCards size={19} />
+            <span>Payroll</span>
+          </button>
 
-          <button className="nav-item" onClick={() => navigate("/settings")}><Settings size={19} /><span>Settings</span></button>
+          <button
+            className="nav-item"
+            onClick={() => navigate("/settings")}
+          >
+            <Settings size={19} />
+            <span>Settings</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -541,7 +688,9 @@ function Employees() {
 
             <div>
               <h1>Employees</h1>
-              <p>Manage employee records and information</p>
+              <p>
+                Manage employee records and information
+              </p>
             </div>
           </div>
 
@@ -570,9 +719,9 @@ function Employees() {
           <div className="employees-page-header">
             <div>
               <h1>Employee Management</h1>
-
               <p>
-                Add, view, edit, search and manage employee records.
+                Add, view, edit, search and manage employee
+                records.
               </p>
             </div>
 
@@ -584,6 +733,12 @@ function Employees() {
               Add Employee
             </button>
           </div>
+
+          {apiError && (
+            <div className="employee-form-error">
+              {apiError}
+            </div>
+          )}
 
           <div className="employees-summary-grid">
             <div className="employee-summary-card">
@@ -615,7 +770,6 @@ function Employees() {
 
               <div>
                 <span>Inactive Employees</span>
-
                 <strong>
                   {employees.length - activeEmployees}
                 </strong>
@@ -644,14 +798,22 @@ function Employees() {
                   setDepartmentFilter(event.target.value)
                 }
               >
-                <option value="All">All Departments</option>
-                <option value="Engineering">Engineering</option>
+                <option value="All">
+                  All Departments
+                </option>
+                <option value="Engineering">
+                  Engineering
+                </option>
                 <option value="Human Resources">
                   Human Resources
                 </option>
                 <option value="Finance">Finance</option>
-                <option value="Marketing">Marketing</option>
-                <option value="Operations">Operations</option>
+                <option value="Marketing">
+                  Marketing
+                </option>
+                <option value="Operations">
+                  Operations
+                </option>
               </select>
 
               <select
@@ -662,7 +824,9 @@ function Employees() {
               >
                 <option value="All">All Status</option>
                 <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
+                <option value="Inactive">
+                  Inactive
+                </option>
               </select>
             </div>
 
@@ -681,38 +845,72 @@ function Employees() {
                 </thead>
 
                 <tbody>
-                  {filteredEmployees.length > 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td colSpan="7">
+                        <div className="employees-empty-state">
+                          Loading employees...
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredEmployees.length > 0 ? (
                     filteredEmployees.map((employee) => (
-                      <tr key={employee.id}>
+                      <tr key={employee._id}>
                         <td>
                           <div className="employees-person-cell">
                             <div className="employees-avatar">
-                              {employee.name
-                                .split(" ")
-                                .map((name) => name[0])
-                                .join("")
-                                .slice(0, 2)}
+                              {employee.profilePhoto ? (
+                                <img
+                                  src={employee.profilePhoto}
+                                  alt={employee.name}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    borderRadius: "50%",
+                                  }}
+                                />
+                              ) : (
+                                employee.name
+                                  .split(" ")
+                                  .map((name) => name[0])
+                                  .join("")
+                                  .slice(0, 2)
+                              )}
                             </div>
 
                             <div>
-                              <strong>{employee.name}</strong>
-                              <span>{employee.email}</span>
+                              <strong>
+                                {employee.name}
+                              </strong>
+                              <span>
+                                {employee.email}
+                              </span>
                             </div>
                           </div>
                         </td>
 
                         <td>{employee.id}</td>
-                        <td>{employee.department}</td>
-                        <td>{employee.designation}</td>
 
                         <td>
-                          {formatDate(employee.joiningDate)}
+                          {employee.department}
+                        </td>
+
+                        <td>
+                          {employee.designation}
+                        </td>
+
+                        <td>
+                          {formatDate(
+                            employee.joiningDate
+                          )}
                         </td>
 
                         <td>
                           <span
                             className={`employee-status-badge ${
-                              employee.status === "Active"
+                              employee.status ===
+                              "Active"
                                 ? "employee-status-active"
                                 : "employee-status-inactive"
                             }`}
@@ -748,7 +946,9 @@ function Employees() {
                               className="employee-delete-button"
                               title="Delete Employee"
                               onClick={() =>
-                                handleDeleteEmployee(employee.id)
+                                handleDeleteEmployee(
+                                  employee._id
+                                )
                               }
                             >
                               <Trash2 size={16} />
@@ -778,7 +978,9 @@ function Employees() {
 
               <div className="employees-pagination">
                 <button disabled>Previous</button>
-                <button className="employees-page-number">1</button>
+                <button className="employees-page-number">
+                  1
+                </button>
                 <button disabled>Next</button>
               </div>
             </div>
@@ -792,7 +994,9 @@ function Employees() {
             <div className="employee-modal-header">
               <div>
                 <h2>Add Employee</h2>
-                <p>Enter employee information below.</p>
+                <p>
+                  Enter employee information below.
+                </p>
               </div>
 
               <button
@@ -821,6 +1025,7 @@ function Employees() {
                   type="button"
                   className="employee-cancel-button"
                   onClick={closeAddModal}
+                  disabled={submitting}
                 >
                   Cancel
                 </button>
@@ -828,8 +1033,11 @@ function Employees() {
                 <button
                   type="submit"
                   className="employee-save-button"
+                  disabled={submitting}
                 >
-                  Add Employee
+                  {submitting
+                    ? "Adding..."
+                    : "Add Employee"}
                 </button>
               </div>
             </form>
@@ -843,7 +1051,10 @@ function Employees() {
             <div className="employee-modal-header">
               <div>
                 <h2>Employee Details</h2>
-                <p>Complete employee profile information.</p>
+                <p>
+                  Complete employee profile
+                  information.
+                </p>
               </div>
 
               <button
@@ -858,44 +1069,75 @@ function Employees() {
             <div className="employee-form">
               <div className="employee-view-profile">
                 <div className="employees-avatar">
-                  {selectedEmployee.name
-                    .split(" ")
-                    .map((name) => name[0])
-                    .join("")
-                    .slice(0, 2)}
+                  {selectedEmployee.profilePhoto ? (
+                    <img
+                      src={selectedEmployee.profilePhoto}
+                      alt={selectedEmployee.name}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        borderRadius: "50%",
+                      }}
+                    />
+                  ) : (
+                    selectedEmployee.name
+                      .split(" ")
+                      .map((name) => name[0])
+                      .join("")
+                      .slice(0, 2)
+                  )}
                 </div>
 
                 <div>
                   <h2>{selectedEmployee.name}</h2>
-                  <p>{selectedEmployee.designation}</p>
+                  <p>
+                    {selectedEmployee.designation}
+                  </p>
                 </div>
               </div>
 
               <div className="employee-form-grid">
                 <div className="employee-form-group">
                   <label>Employee ID</label>
-                  <input value={selectedEmployee.id} readOnly />
+                  <input
+                    value={selectedEmployee.id}
+                    readOnly
+                  />
                 </div>
 
                 <div className="employee-form-group">
                   <label>Full Name</label>
-                  <input value={selectedEmployee.name} readOnly />
+                  <input
+                    value={selectedEmployee.name}
+                    readOnly
+                  />
                 </div>
 
                 <div className="employee-form-group">
                   <label>Email Address</label>
-                  <input value={selectedEmployee.email} readOnly />
+                  <input
+                    value={selectedEmployee.email}
+                    readOnly
+                  />
                 </div>
 
                 <div className="employee-form-group">
                   <label>Phone Number</label>
-                  <input value={selectedEmployee.phone} readOnly />
+                  <input
+                    value={
+                      selectedEmployee.phone || ""
+                    }
+                    readOnly
+                  />
                 </div>
 
                 <div className="employee-form-group">
                   <label>Department</label>
                   <input
-                    value={selectedEmployee.department}
+                    value={
+                      selectedEmployee.department
+                    }
                     readOnly
                   />
                 </div>
@@ -903,7 +1145,27 @@ function Employees() {
                 <div className="employee-form-group">
                   <label>Designation</label>
                   <input
-                    value={selectedEmployee.designation}
+                    value={
+                      selectedEmployee.designation
+                    }
+                    readOnly
+                  />
+                </div>
+
+                <div className="employee-form-group">
+                  <label>Profile Photo URL</label>
+                  <input
+                    value={selectedEmployee.profilePhoto || ""}
+                    readOnly
+                  />
+                </div>
+
+                <div className="employee-form-group">
+                  <label>Date of Birth</label>
+                  <input
+                    value={formatDate(
+                      selectedEmployee.dateOfBirth
+                    )}
                     readOnly
                   />
                 </div>
@@ -920,7 +1182,10 @@ function Employees() {
 
                 <div className="employee-form-group">
                   <label>Status</label>
-                  <input value={selectedEmployee.status} readOnly />
+                  <input
+                    value={selectedEmployee.status}
+                    readOnly
+                  />
                 </div>
               </div>
 
@@ -944,7 +1209,9 @@ function Employees() {
             <div className="employee-modal-header">
               <div>
                 <h2>Edit Employee</h2>
-                <p>Update employee information.</p>
+                <p>
+                  Update employee information.
+                </p>
               </div>
 
               <button
@@ -973,6 +1240,7 @@ function Employees() {
                   type="button"
                   className="employee-cancel-button"
                   onClick={closeEditModal}
+                  disabled={submitting}
                 >
                   Cancel
                 </button>
@@ -980,8 +1248,11 @@ function Employees() {
                 <button
                   type="submit"
                   className="employee-save-button"
+                  disabled={submitting}
                 >
-                  Update Employee
+                  {submitting
+                    ? "Updating..."
+                    : "Update Employee"}
                 </button>
               </div>
             </form>
@@ -993,5 +1264,3 @@ function Employees() {
 }
 
 export default Employees;
-
-
