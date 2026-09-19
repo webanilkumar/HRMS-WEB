@@ -1,7 +1,9 @@
-const express = require("express");
+﻿const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const mongoose = require("mongoose");
+
+dotenv.config();
 
 const employeeRoutes = require("./routes/employeeRoutes");
 const leaveRoutes = require("./routes/leaveRoutes");
@@ -16,13 +18,46 @@ const noticeRoutes = require("./routes/noticeRoutes");
 const employeeDocumentRoutes = require("./routes/employeeDocumentRoutes");
 const performanceRoutes = require("./routes/performanceRoutes");
 
-dotenv.config();
-
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+let mongoConnectionPromise = null;
+
+const connectDB = async () => {
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
+
+  if (!mongoConnectionPromise) {
+    mongoConnectionPromise = mongoose
+      .connect(process.env.MONGODB_URI)
+      .then(() => {
+        console.log("MongoDB connected successfully");
+      })
+      .catch((error) => {
+        mongoConnectionPromise = null;
+        throw error;
+      });
+  }
+
+  await mongoConnectionPromise;
+};
+
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("MongoDB connection failed:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+    });
+  }
+});
 
 app.get("/", (req, res) => {
   res.json({
@@ -52,23 +87,12 @@ app.use("/api/notices", noticeRoutes);
 app.use("/api/employee-documents", employeeDocumentRoutes);
 app.use("/api/performance", performanceRoutes);
 
-const startServer = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI);
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
 
-    console.log("MongoDB connected successfully");
+  app.listen(PORT, () => {
+    console.log(`HRMS server running on port ${PORT}`);
+  });
+}
 
-    app.listen(PORT, () => {
-      console.log(`HRMS server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error(
-      "MongoDB connection failed:",
-      error.message
-    );
-
-    process.exit(1);
-  }
-};
-
-startServer();
+module.exports = app;
