@@ -1,5 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import API_BASE_URL from "../services/apiConfig";
 
 function Login() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ function Login() {
       setLoading(true);
 
       const response = await fetch(
-        "http://localhost:5000/api/auth/login",
+        `${API_BASE_URL}/api/auth/login`,
         {
           method: "POST",
           headers: {
@@ -84,8 +85,10 @@ function Login() {
 
       navigate("/dashboard");
     } catch (error) {
+      console.error("Login error:", error);
+
       setError(
-        "Unable to connect to server. Please make sure backend is running."
+        "Unable to connect to server. Please try again."
       );
     } finally {
       setLoading(false);
