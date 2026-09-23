@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import GlobalSearch from "../components/GlobalSearch";
+import API_BASE_URL from "../services/apiConfig";
 import {
   Bell,
   Building2,
@@ -17,9 +18,9 @@ import {
   WalletCards,
 } from "lucide-react";
 
-const ATTENDANCE_API_URL = "http://localhost:5000/api/attendance";
-const EMPLOYEE_API_URL = "http://localhost:5000/api/employees";
-const LEAVE_API_URL = "http://localhost:5000/api/leaves";
+const ATTENDANCE_API_URL = `${API_BASE_URL}/api/attendance`;
+const EMPLOYEE_API_URL = `${API_BASE_URL}/api/employees`;
+const LEAVE_API_URL = `${API_BASE_URL}/api/leaves`;
 
 function Dashboard() {
   const navigate = useNavigate();
